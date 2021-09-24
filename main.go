@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	asdbv1beta1 "github.com/aerospike/aerospike-kubernetes-operator/api/v1beta1"
@@ -13,6 +14,7 @@ import (
 	"github.com/aerospike/aerospike-management-lib/asconfig"
 	k8Runtime "k8s.io/apimachinery/pkg/runtime"
 	utilRuntime "k8s.io/apimachinery/pkg/util/runtime"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	clientGoScheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -160,8 +162,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	context := ctrl.SetupSignalHandler()
+
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	aerospikecluster.NewEventWatcher(kubeInformerFactory, kubeClient, ctrl.Log.WithName("controllers").WithName("NodeAffinityConflict"))
+	kubeInformerFactory.Start(context.Done())
+
 	setupLog.Info("Starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(context); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
