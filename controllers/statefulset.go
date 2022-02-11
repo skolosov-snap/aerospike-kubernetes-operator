@@ -235,7 +235,7 @@ func (r *SingleClusterReconciler) deleteSTS(st *appsv1.StatefulSet) error {
 
 func (r *SingleClusterReconciler) waitForSTSToBeReady(st *appsv1.StatefulSet) error {
 
-	const podStatusMaxRetry = 18
+	const podStatusMaxRetry = 18 * 3
 	const podStatusRetryInterval = time.Second * 10
 
 	r.Log.Info(
