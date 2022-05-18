@@ -143,21 +143,15 @@ func (s *AerospikeStorageSpec) GetAerospikeStorageList() (
 
 		if volume.Aerospike != nil {
 			// TODO: Do we need to check for other type of sources
-			if volume.Source.PersistentVolume == nil {
+			if volume.Source.Secret != nil || volume.Source.ConfigMap != nil {
 				continue
 			}
-			if volume.Source.PersistentVolume.VolumeMode == v1.PersistentVolumeBlock {
-				blockStorageDeviceList = append(
-					blockStorageDeviceList, volume.Aerospike.Path,
-				)
-			} else if volume.Source.PersistentVolume.VolumeMode == v1.PersistentVolumeFilesystem {
+			if volume.Source.IsSourceDeviceType() {
+				blockStorageDeviceList = append(blockStorageDeviceList, volume.Aerospike.Path)
+			} else if volume.Source.IsSourceFileType() {
 				fileStorageList = append(fileStorageList, volume.Aerospike.Path)
 			} else {
-				return nil, nil, fmt.Errorf(
-					"invalid volumemode %s, valid volumemods %s, %s",
-					volume.Source.PersistentVolume.VolumeMode,
-					v1.PersistentVolumeBlock, v1.PersistentVolumeFilesystem,
-				)
+				return nil, nil, fmt.Errorf("invalid volume config: %+v", volume)
 			}
 		}
 	}
@@ -183,6 +177,19 @@ func (s *AerospikeStorageSpec) GetVolumeForAerospikePath(path string) *VolumeSpe
 		}
 	}
 	return matchedVolume
+}
+
+func (s VolumeSource) IsSourceFileType() bool {
+	if s.HostPath != nil && s.HostPath.Type != nil {
+		return *s.HostPath.Type == v1.HostPathFile || *s.HostPath.Type == v1.HostPathFileOrCreate ||
+			*s.HostPath.Type == v1.HostPathDirectory || *s.HostPath.Type == v1.HostPathDirectoryOrCreate
+	}
+	return s.EmptyDir != nil || (s.PersistentVolume != nil && s.PersistentVolume.VolumeMode == v1.PersistentVolumeFilesystem)
+}
+
+func (s VolumeSource) IsSourceDeviceType() bool {
+	return (s.HostPath != nil && s.HostPath.Type != nil && *s.HostPath.Type == v1.HostPathBlockDev) ||
+		(s.PersistentVolume != nil && s.PersistentVolume.VolumeMode == v1.PersistentVolumeBlock)
 }
 
 func validateStorage(
@@ -380,15 +387,24 @@ func validateStorageVolumeSource(volume VolumeSpec) error {
 	if source.EmptyDir != nil {
 		sourceFound = true
 	}
+	if source.HostPath != nil {
+		if source.HostPath.Type == nil {
+			return fmt.Errorf("hostPath should have type to be explicitely specified: %+v", volume)
+		}
+		if sourceFound {
+			return fmt.Errorf("can not specify more than 1 volume source: %+v", volume)
+		}
+		sourceFound = true
+	}
 	if source.Secret != nil {
 		if sourceFound {
-			return fmt.Errorf("can not specify more than 1 source")
+			return fmt.Errorf("can not specify more than 1 volume source: %+v", volume)
 		}
 		sourceFound = true
 	}
 	if source.ConfigMap != nil {
 		if sourceFound {
-			return fmt.Errorf("can not specify more than 1 source")
+			return fmt.Errorf("can not specify more than 1 volume source: %+v", volume)
 		}
 		sourceFound = true
 	}
@@ -405,7 +421,7 @@ func validateStorageVolumeSource(volume VolumeSpec) error {
 		} else if source.PersistentVolume.VolumeMode == v1.PersistentVolumeFilesystem {
 			if volume.InitMethod != AerospikeVolumeInitMethodNone && volume.InitMethod != AerospikeVolumeInitMethodDeleteFiles {
 				return fmt.Errorf(
-					"invalid init method %v for filesystem volume: %v2",
+					"invalid init method %v for filesystem volume: %v",
 					volume.InitMethod, volume,
 				)
 			}
@@ -435,7 +451,7 @@ func validateStorageVolumeSource(volume VolumeSpec) error {
 		}
 
 		if sourceFound {
-			return fmt.Errorf("can not specify more than 1 source")
+			return fmt.Errorf("can not specify more than 1 volume source: %+v", volume)
 		}
 		sourceFound = true
 	}

@@ -620,7 +620,7 @@ func (r *SingleClusterReconciler) rollingRestartRack(
 
 		if restartType == NoRestart {
 			r.Log.Info(
-				"This Pod doesn't need rolling restart, Skip this", "pod",
+				"This Pod doesn't need rolling restart, Skip restart.", "pod",
 				pod.Name,
 			)
 			continue
@@ -778,6 +778,13 @@ func (r *SingleClusterReconciler) isStorageVolumeSourceUpdated(
 		return true
 	}
 	if !reflect.DeepEqual(podVolume.EmptyDir, volumeCopy.Source.EmptyDir) {
+		r.Log.Info(
+			"Volume source updated", "old volume.source ",
+			podVolume.VolumeSource, "new volume.source", volume.Source,
+		)
+		return true
+	}
+	if !reflect.DeepEqual(podVolume.HostPath, volumeCopy.Source.HostPath) {
 		r.Log.Info(
 			"Volume source updated", "old volume.source ",
 			podVolume.VolumeSource, "new volume.source", volume.Source,
