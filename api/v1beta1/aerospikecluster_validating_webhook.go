@@ -45,6 +45,13 @@ var immutableNetworkParams = []string{
 	"alternate-access-port", "tls-port", "tls-access-port",
 	"tls-alternate-access-port",
 }
+var mutableStorageParams = map[string]struct{}{
+	"devices":           {},
+	"compression":       {},
+	"compression-level": {},
+	"defrag-lwm-pct":    {},
+	"defrag-sleep":      {},
+}
 
 var versionPrefixRegex = regexp.MustCompile("^.*-")
 
@@ -1167,13 +1174,13 @@ func validateNsConfUpdate(
 				// storage-engine update not allowed for now
 				storage, ok1 := singleConf["storage-engine"]
 				oldStorage, ok2 := oldSingleConf["storage-engine"]
-				if ok1 && !ok2 || !ok1 && ok2 {
+				if ok1 != ok2 {
 					return fmt.Errorf(
 						"storage-engine config cannot be added or removed from existing cluster. Old namespace config %v, new namespace config %v",
 						oldSingleConf, singleConf,
 					)
 				}
-				if ok1 && ok2 && !reflect.DeepEqual(storage, oldStorage) {
+				if ok1 && ok2 && storageHasChanged(storage.(map[string]interface{}), oldStorage.(map[string]interface{})) {
 					return fmt.Errorf(
 						"storage-engine config cannot be changed. Old namespace config %v, new namespace config %v",
 						oldSingleConf, singleConf,
@@ -1192,6 +1199,31 @@ func validateNsConfUpdate(
 	}
 	// Check for namespace name len
 	return nil
+}
+
+// this compares storage-engine fields except those which are mutable.
+func storageHasChanged(newStorage map[string]interface{}, oldStorage map[string]interface{}) bool {
+	for key := range oldStorage {
+		if _, mutable := mutableStorageParams[key]; mutable {
+			continue
+		}
+		if _, exist := newStorage[key]; !exist {
+			return true
+		}
+	}
+	for key, newVal := range newStorage {
+		if _, mutable := mutableStorageParams[key]; mutable {
+			continue
+		}
+		if oldValue, exist := oldStorage[key]; exist {
+			if !reflect.DeepEqual(newVal, oldValue) {
+				return true
+			}
+		} else {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAerospikeConfigSchema(
